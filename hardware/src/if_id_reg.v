@@ -46,3 +46,4 @@ always @(posedge clock) begin
     if_JALR_target <= id_JALR_target;
     if_next_PC_select <= id_next_PC_select;
 end
+endmodule

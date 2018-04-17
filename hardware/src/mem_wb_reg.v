@@ -18,7 +18,7 @@ module ex_mem_reg_unit #(parameter CORE = 0, DATA_WIDTH=32, ADDRESS_BITS=20)(
     wb_ALU_result,
     mem_write,
     mem_write_reg,
-    mem_write_data;
+    mem_write_data
 );
 
 input clock, reset;
@@ -51,3 +51,4 @@ always @(posedge clock) begin
     mem_write_reg <= wb_write_reg;
     mem_write_data <= wb_write_data;
 end
+endmodule

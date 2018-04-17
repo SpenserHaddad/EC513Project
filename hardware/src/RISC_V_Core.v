@@ -123,8 +123,6 @@ wire [31:0] id_rs1_data;
 wire [31:0] id_rs2_data;
 wire [4:0] id_rd;
 wire [31:0] id_extend_imm;
-wire [1:0] id_extend_sel;
-wire [1:0] id_next_PC_select;
 wire id_write;
 wire [4:0] id_write_reg;
 wire [31:0] id_write_data;
@@ -209,7 +207,7 @@ if_id_reg_unit #(CORE, DATA_WIDTH, ADDRESS_BITS) IF_ID_REG (
         .if_branch_target(if_branch_target),
         .if_JAL_target(if_JAL_target),
         .if_JALR_target(if_JALR_target),
-        .if_next_PC_select(if_next_PC_select),
+        .if_next_PC_select(if_next_PC_select)
 );
 
 decode_unit #(CORE, ADDRESS_BITS) ID (
@@ -236,7 +234,7 @@ decode_unit #(CORE, ADDRESS_BITS) ID (
         .report(report)
 );
 
-id_ex_reg_unit #(CORE, ADDRESS_BITS) ID_EU_REG (
+id_ex_reg_unit #(CORE, DATA_WIDTH, ADDRESS_BITS) ID_EU_REG (
         .clock(clock),
         .reset(reset),
 
@@ -267,10 +265,10 @@ id_ex_reg_unit #(CORE, ADDRESS_BITS) ID_EU_REG (
         .ex_inst_PC(ex_inst_PC),
         .ex_extend_imm(ex_extend_imm),
         .id_extend_sel(id_extend_sel),
-        .id_next_PC_select(id_next_PC_select)
+        .id_next_PC_select(id_next_PC_select),
         .id_write(id_write),
         .id_write_reg(id_write_reg),
-        .id_write_data(id_write_data),
+        .id_write_data(id_write_data)
 );
 
 control_unit #(CORE) CU (
