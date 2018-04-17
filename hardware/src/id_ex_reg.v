@@ -34,7 +34,7 @@ module id_ex_reg_unit #(parameter CORE = 0, DATA_WIDTH=32, ADDRESS_BITS = 20)(
     id_next_PC_select,
     id_write,
     id_write_reg,
-    id_write_data,
+    id_write_data
 );
 
 input clock;

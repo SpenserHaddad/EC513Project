@@ -1,5 +1,5 @@
-// Execute / Memory Pipeline Register
-module ex_mem_reg_unit #(parameter CORE = 0, DATA_WIDTH=32, ADDRESS_BITS=20)(
+//  Memory / Writeback Pipeline Register
+module mem_wb_reg_unit #(parameter CORE = 0, DATA_WIDTH=32, ADDRESS_BITS=20)(
     clock, reset,
 
     mem_regWrite,

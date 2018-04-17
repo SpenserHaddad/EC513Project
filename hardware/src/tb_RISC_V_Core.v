@@ -42,11 +42,12 @@ RISC_V_Core CORE (
 always #1 clock = ~clock;
 
 initial begin
-  if (!$value$plusargs("ROM_FILE=%s", rom_filename)) begin
+  /*if (!$value$plusargs("ROM_FILE=%s", rom_filename)) begin
     $display("NO ROM_FILE specified. Exiting simulation");
     $finish;
   end
-  $readmemh({"../software/applications/binaries/", rom_filename, ".mem"}, CORE.IF.i_mem_interface.RAM.sram);
+	*/
+  $readmemh({"../software/applications/binaries/", "gcd", ".mem"}, CORE.IF.i_mem_interface.RAM.sram);
 
   clock  = 0;
   reset  = 1;

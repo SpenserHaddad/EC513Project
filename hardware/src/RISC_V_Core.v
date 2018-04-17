@@ -108,7 +108,7 @@ wire [ADDRESS_BITS-1:0] if_JAL_target;
 wire [ADDRESS_BITS-1:0] if_JALR_target;
 wire [1:0] if_next_PC_select;
 
-wire [31:0] id_instuction;
+wire [31:0] id_instruction;
 wire [ADDRESS_BITS-1:0] id_inst_PC;
 wire id_branch;
 wire [ADDRESS_BITS-1:0] id_branch_target;
@@ -140,8 +140,10 @@ wire [31:0] ex_rs2_data;
 wire [4:0] ex_rd;
 wire ex_branch;
 wire [ADDRESS_BITS-1:0] ex_branch_target;
+wire [ADDRESS_BITS-1:0] ex_inst_PC;
 wire [31:0] ex_extend_imm;
 wire [ADDRESS_BITS-1:0] ex_JAL_target;
+wire [ADDRESS_BITS-1:0] ex_JALR_target;
 wire ex_memRead;
 wire ex_memWrite;
 wire ex_regWrite;
@@ -158,6 +160,7 @@ wire [DATA_WIDTH-1:0] mem_rs2_data;
 wire [4:0] mem_rd;
 wire mem_memRead;
 wire [DATA_WIDTH-1:0] mem_memory_data;
+wire [ADDRESS_BITS-1: 0] mem_memory_addr;
 
 wire wb_write;
 wire [4:0] wb_write_reg;
@@ -247,6 +250,7 @@ id_ex_reg_unit #(CORE, DATA_WIDTH, ADDRESS_BITS) ID_EU_REG (
         .id_branch(id_branch),
         .id_branch_target(id_branch_target),
         .id_inst_PC(id_inst_PC),
+		.id_JAL_target(id_JAL_target),
         .id_extend_imm(id_extend_imm),
         .cu_extend_sel(cu_extend_sel),
         .cu_next_PC_select(cu_next_PC_select),
@@ -263,6 +267,7 @@ id_ex_reg_unit #(CORE, DATA_WIDTH, ADDRESS_BITS) ID_EU_REG (
         .ex_branch(ex_branch),
         .ex_branch_target(ex_branch_target),
         .ex_inst_PC(ex_inst_PC),
+		.ex_JAL_target(ex_JAL_target),
         .ex_extend_imm(ex_extend_imm),
         .id_extend_sel(id_extend_sel),
         .id_next_PC_select(id_next_PC_select),
@@ -277,6 +282,7 @@ control_unit #(CORE) CU (
         .opcode(ex_opcode),
 
         .branch_op(branch_op),
+		.memtoReg(memtoReg),
         .memRead(cu_memRead),
         .ALUOp(ALUOp),
         .memWrite(cu_memWrite),
@@ -317,6 +323,7 @@ ex_mem_reg_unit #(CORE, DATA_WIDTH, ADDRESS_BITS) EX_MEM_REG (
         .reset(reset),
 
         .ex_memRead(cu_memRead),
+		.ex_memWrite(ex_memWrite),
         .ex_regWrite(cu_regWrite),
         .ex_ALU_result(ex_ALU_result),
         .ex_rs2_data(ex_rs2_data),
@@ -327,6 +334,7 @@ ex_mem_reg_unit #(CORE, DATA_WIDTH, ADDRESS_BITS) EX_MEM_REG (
 
         .mem_load(mem_load),
         .mem_store(mem_store),
+		.mem_regWrite(mem_regWrite),
         .mem_ALU_result(mem_ALU_result),
         .mem_store_data(mem_rs2_data),
         .mem_rd(mem_rd),
@@ -353,6 +361,9 @@ memory_unit #(CORE, DATA_WIDTH, INDEX_BITS, OFFSET_BITS, ADDRESS_BITS) MU (
 );
 
 mem_wb_reg_unit #(CORE, DATA_WIDTH, ADDRESS_BITS) MEM_WB_REG (
+		.clock(clock),
+		.reset(reset),
+
         .mem_regWrite(mem_regWrite),
         .mem_memRead(mem_memRead),
         .mem_rd(mem_rd),
