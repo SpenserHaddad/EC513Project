@@ -137,7 +137,7 @@ module directMappedL1 (
   end
   
   always @* begin : vld_cmb
-    nxtVldMem        = vldMem; // default - reatin all values not @ bAddr
+    nxtVldMem = vldMem; // default - reatin all values not @ bAddr
     if (enableFromProc) begin
       nxtVldMem[bAddr] = 1'b1;   // validate block @ bAddr
     end
@@ -174,12 +174,8 @@ module directMappedL1 (
   // by this module to hold its address (and data) constant until a ready is
   // detected.
   //
-  always @(posedge clock or posedge reset) begin : data_seq
-    if (reset) begin
-      dataMem <= {NBLKS{1'b0}};
-    end else begin
-      dataMem <= nxtDataMem;
-    end
+  always @(posedge clock) begin : data_seq
+    dataMem <= nxtDataMem;
   end
   
   always @* begin : data_cmb
@@ -215,7 +211,7 @@ module directMappedL1 (
   // Ready //
   ///////////
   //
-  assign readyToProc = fsm_state ? ~miss : 1'b0;
+  assign readyToProc = fsm_state ? ~(enableFromProc & (miss | writeFromProc)) : 1'b0;
 
   // --------------------------------------------------------------------------
   // Lower-Level Memory Interface:
@@ -224,13 +220,21 @@ module directMappedL1 (
   assign writeToLl  = writeFromProc;
   assign dataToLl   = dataFromProc;
 
-  assign enableToLl = ~fsm_state;
+  assign enableToLl = fsm_state ? (enableFromProc & writeFromProc) : 1'b1;
 
   // --------------------------------------------------------------------------
-  // Control/Status FSM:
+  // Control/Status:
+  //
+  ////////////////////
+  // Miss Detection //
+  ////////////////////
   //
   assign miss = ~(tagMem[bAddr] == bTag) & enableFromProc;
   
+  /////////
+  // FSM //
+  /////////
+  //
   always @(posedge clock or posedge reset) begin : fsm_seq
     if (reset) begin
       fsm_state <= RDY;
@@ -242,7 +246,7 @@ module directMappedL1 (
   always @* begin : fsm_cmb
     case (fsm_state)
       RDY : begin
-        if (miss) begin
+        if (miss || writeFromProc) begin
           nxt_fsm_state = NOTRDY;
         end else begin
           nxt_fsm_state = RDY;
@@ -257,7 +261,5 @@ module directMappedL1 (
       end
     endcase // case (fsm_state)
   end // block: fsm_cmb
-  
-    
-  
+
 endmodule // directMappedL1
