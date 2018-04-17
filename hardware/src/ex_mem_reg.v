@@ -35,15 +35,15 @@ input mem_write;
 input [4:0] mem_write_reg;
 input [DATA_WIDTH-1:0] mem_write_data;
 
-output mem_load;
-output mem_store;
-output mem_regWrite;
-output [DATA_WIDTH-1:0] mem_ALU_result;
-output [DATA_WIDTH-1:0] mem_store_data;
-output [4:0] mem_rd;
-output ex_write;
-output [4:0] ex_write_reg;
-output [DATA_WIDTH-1:0] ex_write_data;
+output reg mem_load;
+output reg mem_store;
+output reg mem_regWrite;
+output reg [DATA_WIDTH-1:0] mem_ALU_result;
+output reg [DATA_WIDTH-1:0] mem_store_data;
+output reg [4:0] mem_rd;
+output reg ex_write;
+output reg [4:0] ex_write_reg;
+output reg [DATA_WIDTH-1:0] ex_write_data;
 
 always @(posedge clock) begin
     mem_load <= ex_memRead;

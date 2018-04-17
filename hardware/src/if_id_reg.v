@@ -29,13 +29,13 @@ input [ADDRESS_BITS-1:0] id_JAL_target;
 input [ADDRESS_BITS-1:0] id_JALR_target;
 input [1:0] id_next_PC_select;
 
-output [31:0] id_instruction;
-output [ADDRESS_BITS-1:0] id_inst_PC;
-output if_branch;
-output [ADDRESS_BITS-1:0] if_branch_target;
-output [ADDRESS_BITS-1:0] if_JAL_target;
-output [ADDRESS_BITS-1:0] if_JALR_target;
-output [1:0] if_next_PC_select;
+output reg [31:0] id_instruction;
+output reg [ADDRESS_BITS-1:0] id_inst_PC;
+output reg if_branch;
+output reg [ADDRESS_BITS-1:0] if_branch_target;
+output reg [ADDRESS_BITS-1:0] if_JAL_target;
+output reg [ADDRESS_BITS-1:0] if_JALR_target;
+output reg [1:0] if_next_PC_select;
 
 always @(posedge clock) begin
     id_instruction <= if_instruction;

@@ -57,22 +57,22 @@ input ex_write;
 input [4:0] ex_write_reg;
 input [DATA_WIDTH-1:0] ex_write_data;
 
-output [6:0] ex_opcode;
-output [2:0] ex_funct3;
-output [6:0] ex_funct7;
-output [31:0] ex_rs1_data;
-output [31:0] ex_rs2_data;
-output [4:0] ex_rd;
-output ex_branch;
-output [ADDRESS_BITS-1:0] ex_branch_target;
-output [ADDRESS_BITS-1:0] ex_inst_PC;
-output [ADDRESS_BITS-1:0] ex_JAL_target;
-output [31:0] ex_extend_imm;
-output [1:0] id_extend_sel;
-output [1:0] id_next_PC_select;
-output id_write;
-output [4:0] id_write_reg;
-output [DATA_WIDTH-1:0] id_write_data;
+output reg [6:0] ex_opcode;
+output reg [2:0] ex_funct3;
+output reg [6:0] ex_funct7;
+output reg [31:0] ex_rs1_data;
+output reg [31:0] ex_rs2_data;
+output reg [4:0] ex_rd;
+output reg ex_branch;
+output reg [ADDRESS_BITS-1:0] ex_branch_target;
+output reg [ADDRESS_BITS-1:0] ex_inst_PC;
+output reg [ADDRESS_BITS-1:0] ex_JAL_target;
+output reg [31:0] ex_extend_imm;
+output reg [1:0] id_extend_sel;
+output reg [1:0] id_next_PC_select;
+output reg id_write;
+output reg [4:0] id_write_reg;
+output reg [DATA_WIDTH-1:0] id_write_data;
 
 always @(posedge clock) begin
     ex_opcode <= id_opcode;

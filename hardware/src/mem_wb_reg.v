@@ -32,14 +32,14 @@ input wb_write;
 input [4:0] wb_write_reg;
 input [DATA_WIDTH-1:0] wb_write_data;
 
-output wb_regWrite;
-output wb_memRead;
-output [4:0] wb_rd;
-output [DATA_WIDTH-1:0] wb_memory_data;
-output [DATA_WIDTH-1:0] wb_ALU_result;
-output mem_write;
-output [4:0] mem_write_reg;
-output [DATA_WIDTH-1:0] mem_write_data;
+output reg wb_regWrite;
+output reg wb_memRead;
+output reg [4:0] wb_rd;
+output reg [DATA_WIDTH-1:0] wb_memory_data;
+output reg [DATA_WIDTH-1:0] wb_ALU_result;
+output reg mem_write;
+output reg [4:0] mem_write_reg;
+output reg [DATA_WIDTH-1:0] mem_write_data;
 
 always @(posedge clock) begin
     wb_regWrite <= mem_regWrite;
