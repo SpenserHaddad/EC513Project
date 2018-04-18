@@ -119,6 +119,8 @@ reg                    idex_operand_B_sel;
 reg [ADDRESS_BITS-1:0] idex_branch_target; 
 reg              [4:0] idex_rs1;
 reg              [4:0] idex_rs2;
+reg [ADDRESS_BITS-1:0] idex_JAL_target;   
+reg              [1:0] idex_next_PC_sel;
 
 wire                   stall;
 
@@ -139,6 +141,10 @@ reg                    exmem_memRead;
 reg                    exmem_memWrite;
 reg             [31:0] exmem_rs2_data;
 reg                    exmem_branch;
+reg [ADDRESS_BITS-1:0] exmem_JAL_target;   
+reg [ADDRESS_BITS-1:0] exmem_JALR_target;   
+reg [ADDRESS_BITS-1:0] exmem_branch_target; 
+reg              [1:0] exmem_next_PC_sel;
 
 ///////////////
 // MEM Stage //
@@ -160,12 +166,12 @@ fetch_unit #(CORE, DATA_WIDTH, INDEX_BITS, OFFSET_BITS, ADDRESS_BITS) IF (
         .reset           (reset), 
         .start           (start), 
         
-        .PC_select       (next_PC_sel),
+        .PC_select       (exmem_next_PC_sel),
         .program_address (prog_address), 
-        .JAL_target      (JAL_target),
-        .JALR_target     (JALR_target),
+        .JAL_target      (exmem_JAL_target),
+        .JALR_target     (exmem_JALR_target),
         .branch          (exmem_branch), 
-        .branch_target   (idex_branch_target), 
+        .branch_target   (exmem_branch_target), 
         
         .stall           (stall),
         .instruction     (instruction), 
@@ -179,10 +185,13 @@ fetch_unit #(CORE, DATA_WIDTH, INDEX_BITS, OFFSET_BITS, ADDRESS_BITS) IF (
 
 always @ (posedge clock) begin : ifid
   if (reset) begin
-    ifid_instruction <= {DATA_WIDTH{1'd0}};
+    ifid_instruction <= 32'h00000013;
     ifid_inst_PC     <= {ADDRESS_BITS{1'd0}};
   end else begin
-    if (!exmem_branch) begin
+    if (exmem_next_PC_sel[1] || ((exmem_next_PC_sel == 2'd1) & exmem_branch)) begin
+      ifid_instruction <= 32'h00000013;
+      ifid_inst_PC     <= {ADDRESS_BITS{1'd0}};
+    end else begin
       ifid_instruction <= instruction;
       ifid_inst_PC     <= inst_PC;
     end
@@ -257,17 +266,19 @@ always @ (posedge clock) begin : idex
     idex_extend_imm    <= 32'd0;
     idex_memRead       <= 1'd0;
     idex_memWrite      <= 1'd0;
-    idex_ALUOp         <= 3'd0;
+    idex_ALUOp         <= 3'd1;
     idex_branch_op     <= 1'd0;
     idex_inst_PC       <= {ADDRESS_BITS{1'd0}};
     idex_operand_A_sel <= 2'd0; 
-    idex_operand_B_sel <= 1'd0;
+    idex_operand_B_sel <= 1'd1;
     idex_branch_target <= {ADDRESS_BITS{1'd0}};
     idex_regWrite      <= 1'd0;
     idex_rs1           <= 5'd0;
     idex_rs2           <= 5'd0;
+    idex_JAL_target    <= {ADDRESS_BITS{1'd0}};
+    idex_next_PC_sel   <= 2'd0;
   end else begin
-    if (stall) begin
+    if (stall || exmem_next_PC_sel[1] || ((exmem_next_PC_sel == 2'd1) & exmem_branch)) begin
       idex_rs1_data      <= 32'd0; 
       idex_rs2_data      <= 32'd0;
       idex_rd            <= 5'd0;  
@@ -276,15 +287,17 @@ always @ (posedge clock) begin : idex
       idex_extend_imm    <= 32'd0;
       idex_memRead       <= 1'd0;
       idex_memWrite      <= 1'd0;
-      idex_ALUOp         <= 3'd0;
+      idex_ALUOp         <= 3'd1;
       idex_branch_op     <= 1'd0;
       idex_inst_PC       <= {ADDRESS_BITS{1'd0}};
       idex_operand_A_sel <= 2'd0; 
-      idex_operand_B_sel <= 1'd0;
+      idex_operand_B_sel <= 1'd1;
       idex_branch_target <= {ADDRESS_BITS{1'd0}};
       idex_regWrite      <= 1'd0;
       idex_rs1           <= 5'd0;
       idex_rs2           <= 5'd0;
+      idex_JAL_target    <= {ADDRESS_BITS{1'd0}};
+      idex_next_PC_sel   <= 2'd0;
     end else begin
       idex_rs1_data      <= rs1_data; 
       idex_rs2_data      <= rs2_data;
@@ -303,6 +316,8 @@ always @ (posedge clock) begin : idex
       idex_regWrite      <= regWrite;
       idex_rs1           <= rs1;
       idex_rs2           <= rs2;
+      idex_JAL_target    <= JAL_target;
+      idex_next_PC_sel   <= next_PC_sel;
     end
   end
 end
@@ -334,21 +349,43 @@ execution_unit #(CORE, DATA_WIDTH, ADDRESS_BITS) EU (
 
 always @ (posedge clock) begin : exmem
   if (reset) begin
-    exmem_ALU_result  <= {DATA_WIDTH{1'd0}};
-    exmem_rd          <= 5'd0;
-    exmem_regWrite    <= 1'd0;
-    exmem_memRead     <= 1'd0;
-    exmem_memWrite    <= 1'd0;
-    exmem_rs2_data    <= 32'd0;
-    exmem_branch      <= 1'd0;
-  end else begin
-    exmem_ALU_result  <= ALU_result;
-    exmem_rd          <= idex_rd;
-    exmem_regWrite    <= idex_regWrite;
-    exmem_memRead     <= idex_memRead;
-    exmem_memWrite    <= idex_memWrite;
-    exmem_rs2_data    <= idex_rs2_data;
-    exmem_branch      <= branch;
+    exmem_ALU_result    <= {DATA_WIDTH{1'd0}};
+    exmem_rd            <= 5'd0;
+    exmem_regWrite      <= 1'd0;
+    exmem_memRead       <= 1'd0;
+    exmem_memWrite      <= 1'd0;
+    exmem_rs2_data      <= 32'd0;
+    exmem_branch        <= 1'd0;
+    exmem_JAL_target    <= {ADDRESS_BITS{1'd0}};
+    exmem_JALR_target   <= {ADDRESS_BITS{1'd0}};
+    exmem_branch_target <= {ADDRESS_BITS{1'd0}}; 
+    exmem_next_PC_sel   <= 2'd0;
+  end else begin // if (reset)
+    if (exmem_next_PC_sel[1] || ((exmem_next_PC_sel == 2'd1) & exmem_branch)) begin
+      exmem_ALU_result    <= {DATA_WIDTH{1'd0}};
+      exmem_rd            <= 5'd0;
+      exmem_regWrite      <= 1'd0;
+      exmem_memRead       <= 1'd0;
+      exmem_memWrite      <= 1'd0;
+      exmem_rs2_data      <= 32'd0;
+      exmem_branch        <= 1'd0;
+      exmem_JAL_target    <= {ADDRESS_BITS{1'd0}};
+      exmem_JALR_target   <= {ADDRESS_BITS{1'd0}};
+      exmem_branch_target <= {ADDRESS_BITS{1'd0}}; 
+      exmem_next_PC_sel   <= 2'd0;
+    end else begin
+      exmem_ALU_result    <= ALU_result;
+      exmem_rd            <= idex_rd;
+      exmem_regWrite      <= idex_regWrite;
+      exmem_memRead       <= idex_memRead;
+      exmem_memWrite      <= idex_memWrite;
+      exmem_rs2_data      <= idex_rs2_data;
+      exmem_branch        <= branch;
+      exmem_JAL_target    <= idex_JAL_target;
+      exmem_JALR_target   <= JALR_target;
+      exmem_branch_target <= idex_branch_target; 
+      exmem_next_PC_sel   <= idex_next_PC_sel;
+    end
   end
 end
 
@@ -445,7 +482,7 @@ always @ (posedge clock) begin : results
               to_peripheral       <= 2'd0;
               to_peripheral_data  <= write_data; 
               to_peripheral_valid <= 1'd1;
-              //$display (" Core [%d] Register [%d] Value = %d", CORE, write_reg, write_data);
+              $display (" Core [%d] Register [%d] Value = %d", CORE, write_reg, write_data);
          end else begin
            to_peripheral_valid <= 1'd0;
          end
