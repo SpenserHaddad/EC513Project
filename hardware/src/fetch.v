@@ -31,6 +31,7 @@ module fetch_unit #(parameter CORE = 0, DATA_WIDTH = 32, INDEX_BITS = 6,
         branch,
         branch_target, 
         
+        stall,
         instruction, 
         inst_PC,
         valid, 
@@ -46,8 +47,10 @@ input [ADDRESS_BITS-1:0] JAL_target;
 input [ADDRESS_BITS-1:0] JALR_target;
 input branch;
 input [ADDRESS_BITS-1:0] branch_target;
+
 input report;
 
+input stall;
 output [DATA_WIDTH-1:0]   instruction;
 output [ADDRESS_BITS-1:0] inst_PC;  
 output valid; 
@@ -93,11 +96,13 @@ always @ (posedge clock) begin
             old_PC       <= 0; 
         end 
         else begin 
+          if (!stall) begin
             fetch        <= 1;
             PC_reg       <= (PC_select == 2'b10)?  JAL_target: 
                             (PC_select == 2'b11)?  JALR_target: 
                             ((PC_select == 2'b01)& branch)?  branch_target : PC_plus4;  
             old_PC       <= PC_reg; 
+          end
         end
       end
 end

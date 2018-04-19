@@ -53,6 +53,7 @@ initial begin
   report = 0;
   prog_address = 'h0;         
   repeat (1) @ (posedge clock);
+  repeat (1) @ (posedge clock);
 
   reset = 0;
   start = 1; 
