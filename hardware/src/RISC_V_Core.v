@@ -65,7 +65,13 @@ wire [31:0]  instruction;
 wire [ADDRESS_BITS-1: 0] inst_PC;
 
 reg   [DATA_WIDTH-1:0] ifid_instruction;
+reg   [DATA_WIDTH-1:0] idex_instruction;
+reg   [DATA_WIDTH-1:0] exmem_instruction;
+reg   [DATA_WIDTH-1:0] memwb_instruction;
 reg [ADDRESS_BITS-1:0] ifid_inst_PC;  
+reg [ADDRESS_BITS-1:0] idex_inst_PC;  
+reg [ADDRESS_BITS-1:0] exmem_inst_PC;  
+reg [ADDRESS_BITS-1:0] memwb_inst_PC;  
 
 //////////////
 // ID Stage //
@@ -113,7 +119,6 @@ reg                    idex_memRead;
 reg                    idex_memWrite;
 reg              [2:0] idex_ALUOp;
 reg                    idex_branch_op;
-reg [ADDRESS_BITS-1:0] idex_inst_PC;  
 reg              [1:0] idex_operand_A_sel; 
 reg                    idex_operand_B_sel; 
 reg [ADDRESS_BITS-1:0] idex_branch_target; 
@@ -146,6 +151,9 @@ reg [ADDRESS_BITS-1:0] exmem_JALR_target;
 reg [ADDRESS_BITS-1:0] exmem_branch_target; 
 reg              [1:0] exmem_next_PC_sel;
 
+wire                   flush;
+reg              [2:0] flush_d;
+  
 ///////////////
 // MEM Stage //
 ///////////////
@@ -188,12 +196,14 @@ always @ (posedge clock) begin : ifid
     ifid_instruction <= 32'h00000013;
     ifid_inst_PC     <= {ADDRESS_BITS{1'd0}};
   end else begin
-    if (exmem_next_PC_sel[1] || ((exmem_next_PC_sel == 2'd1) & exmem_branch)) begin
+    if (flush) begin
       ifid_instruction <= 32'h00000013;
       ifid_inst_PC     <= {ADDRESS_BITS{1'd0}};
     end else begin
-      ifid_instruction <= instruction;
-      ifid_inst_PC     <= inst_PC;
+      if (!stall) begin
+        ifid_instruction <= instruction;
+        ifid_inst_PC     <= inst_PC;
+      end
     end
   end
 end
@@ -277,8 +287,10 @@ always @ (posedge clock) begin : idex
     idex_rs2           <= 5'd0;
     idex_JAL_target    <= {ADDRESS_BITS{1'd0}};
     idex_next_PC_sel   <= 2'd0;
+    idex_instruction <= 32'h00000013;
   end else begin
-    if (stall || exmem_next_PC_sel[1] || ((exmem_next_PC_sel == 2'd1) & exmem_branch)) begin
+    if (flush || stall ) begin
+      idex_inst_PC       <= 32'h13;
       idex_rs1_data      <= 32'd0; 
       idex_rs2_data      <= 32'd0;
       idex_rd            <= 5'd0;  
@@ -289,7 +301,6 @@ always @ (posedge clock) begin : idex
       idex_memWrite      <= 1'd0;
       idex_ALUOp         <= 3'd1;
       idex_branch_op     <= 1'd0;
-      idex_inst_PC       <= {ADDRESS_BITS{1'd0}};
       idex_operand_A_sel <= 2'd0; 
       idex_operand_B_sel <= 1'd1;
       idex_branch_target <= {ADDRESS_BITS{1'd0}};
@@ -298,6 +309,7 @@ always @ (posedge clock) begin : idex
       idex_rs2           <= 5'd0;
       idex_JAL_target    <= {ADDRESS_BITS{1'd0}};
       idex_next_PC_sel   <= 2'd0;
+      idex_instruction <= 32'h00000013;
     end else begin
       idex_rs1_data      <= rs1_data; 
       idex_rs2_data      <= rs2_data;
@@ -309,7 +321,6 @@ always @ (posedge clock) begin : idex
       idex_memWrite      <= memWrite;
       idex_ALUOp         <= ALUOp;
       idex_branch_op     <= branch_op;
-      idex_inst_PC       <= ifid_inst_PC;
       idex_operand_A_sel <= operand_A_sel; 
       idex_operand_B_sel <= operand_B_sel;
       idex_branch_target <= branch_target;
@@ -318,6 +329,8 @@ always @ (posedge clock) begin : idex
       idex_rs2           <= rs2;
       idex_JAL_target    <= JAL_target;
       idex_next_PC_sel   <= next_PC_sel;
+      idex_inst_PC       <= ifid_inst_PC;
+      idex_instruction   <= ifid_instruction;
     end
   end
 end
@@ -360,8 +373,9 @@ always @ (posedge clock) begin : exmem
     exmem_JALR_target   <= {ADDRESS_BITS{1'd0}};
     exmem_branch_target <= {ADDRESS_BITS{1'd0}}; 
     exmem_next_PC_sel   <= 2'd0;
+    exmem_instruction   <= 32'h00000013;
   end else begin // if (reset)
-    if (exmem_next_PC_sel[1] || ((exmem_next_PC_sel == 2'd1) & exmem_branch)) begin
+   if (flush || stall) begin
       exmem_ALU_result    <= {DATA_WIDTH{1'd0}};
       exmem_rd            <= 5'd0;
       exmem_regWrite      <= 1'd0;
@@ -373,7 +387,9 @@ always @ (posedge clock) begin : exmem
       exmem_JALR_target   <= {ADDRESS_BITS{1'd0}};
       exmem_branch_target <= {ADDRESS_BITS{1'd0}}; 
       exmem_next_PC_sel   <= 2'd0;
-    end else begin
+      exmem_inst_PC       <= idex_inst_PC;
+      exmem_instruction   <= 32'h00000013;
+   end else begin
       exmem_ALU_result    <= ALU_result;
       exmem_rd            <= idex_rd;
       exmem_regWrite      <= idex_regWrite;
@@ -381,14 +397,26 @@ always @ (posedge clock) begin : exmem
       exmem_memWrite      <= idex_memWrite;
       exmem_rs2_data      <= idex_rs2_data;
       exmem_branch        <= branch;
+      exmem_next_PC_sel   <= idex_next_PC_sel;
       exmem_JAL_target    <= idex_JAL_target;
       exmem_JALR_target   <= JALR_target;
       exmem_branch_target <= idex_branch_target; 
-      exmem_next_PC_sel   <= idex_next_PC_sel;
-    end
+      exmem_inst_PC       <= idex_inst_PC;
+      exmem_instruction   <= idex_instruction;
+    end // else: !if(flush)
   end
 end
 
+assign flush = (exmem_next_PC_sel[1] || ((exmem_next_PC_sel == 2'd1) & exmem_branch));
+
+always @(posedge clock) begin : flush_dly
+  if (reset) begin
+    flush_d[2:0] <= 3'd0;
+  end else begin
+    flush_d[2:0] <= {flush_d[1:0], flush};
+  end
+end
+  
 /////////////////////
 // Forwarding Unit //
 /////////////////////
@@ -443,17 +471,21 @@ memory_unit #(CORE, DATA_WIDTH, INDEX_BITS, OFFSET_BITS, ADDRESS_BITS) MU (
 
 always @ (posedge clock) begin : memwb
   if (reset) begin
-    memwb_load_data  <= {DATA_WIDTH{1'd0}};
-    memwb_rd         <= 5'd0;
-    memwb_regWrite   <= 1'd0;
-    memwb_memRead    <= 1'd0;
-    memwb_ALU_result <= {DATA_WIDTH{1'd0}};
+    memwb_load_data   <= {DATA_WIDTH{1'd0}};
+    memwb_rd          <= 5'd0;
+    memwb_regWrite    <= 1'd0;
+    memwb_memRead     <= 1'd0;
+    memwb_ALU_result  <= {DATA_WIDTH{1'd0}};
+    memwb_inst_PC     <= 'd0;
+    memwb_instruction <= 32'h00000013;
   end else begin
-    memwb_load_data  <= memory_data;
-    memwb_rd         <= exmem_rd;
-    memwb_regWrite   <= exmem_regWrite;
-    memwb_memRead    <= exmem_memRead;
-    memwb_ALU_result <= exmem_ALU_result;   
+    memwb_load_data   <= memory_data;
+    memwb_rd          <= exmem_rd;
+    memwb_regWrite    <= exmem_regWrite;
+    memwb_memRead     <= exmem_memRead;
+    memwb_ALU_result  <= exmem_ALU_result;   
+    memwb_inst_PC     <= exmem_inst_PC;
+    memwb_instruction <= exmem_instruction;
   end
 end
 
