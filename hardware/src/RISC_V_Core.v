@@ -264,7 +264,7 @@ assign rs1 = ifid_instruction[19:15];
 assign rs2 = ifid_instruction[24:20];
 
 assign stall = (((rs1 == idex_rd) & idex_memRead & (idex_rd != 5'd0)) |
-                ((rs2 == idex_rd) & idex_memRead & (idex_rd != 5'd0)));
+                ((rs2 == idex_rd) & idex_memRead & (idex_rd != 5'd0))) & ~flush;
 
 always @ (posedge clock) begin : idex
   if (reset) begin
@@ -282,7 +282,7 @@ always @ (posedge clock) begin : idex
     idex_operand_A_sel <= 2'd0; 
     idex_operand_B_sel <= 1'd1;
     idex_branch_target <= {ADDRESS_BITS{1'd0}};
-    idex_regWrite      <= 1'd0;
+    idex_regWrite      <= 1'd1;
     idex_rs1           <= 5'd0;
     idex_rs2           <= 5'd0;
     idex_JAL_target    <= {ADDRESS_BITS{1'd0}};
@@ -290,7 +290,7 @@ always @ (posedge clock) begin : idex
     idex_instruction <= 32'h00000013;
   end else begin
     if (flush || stall ) begin
-      idex_inst_PC       <= 32'h13;
+      idex_inst_PC       <= {ADDRESS_BITS{1'd0}};
       idex_rs1_data      <= 32'd0; 
       idex_rs2_data      <= 32'd0;
       idex_rd            <= 5'd0;  
@@ -304,7 +304,7 @@ always @ (posedge clock) begin : idex
       idex_operand_A_sel <= 2'd0; 
       idex_operand_B_sel <= 1'd1;
       idex_branch_target <= {ADDRESS_BITS{1'd0}};
-      idex_regWrite      <= 1'd0;
+      idex_regWrite      <= 1'd1;
       idex_rs1           <= 5'd0;
       idex_rs2           <= 5'd0;
       idex_JAL_target    <= {ADDRESS_BITS{1'd0}};
@@ -364,7 +364,7 @@ always @ (posedge clock) begin : exmem
   if (reset) begin
     exmem_ALU_result    <= {DATA_WIDTH{1'd0}};
     exmem_rd            <= 5'd0;
-    exmem_regWrite      <= 1'd0;
+    exmem_regWrite      <= 1'd1;
     exmem_memRead       <= 1'd0;
     exmem_memWrite      <= 1'd0;
     exmem_rs2_data      <= 32'd0;
@@ -374,11 +374,12 @@ always @ (posedge clock) begin : exmem
     exmem_branch_target <= {ADDRESS_BITS{1'd0}}; 
     exmem_next_PC_sel   <= 2'd0;
     exmem_instruction   <= 32'h00000013;
+    exmem_inst_PC       <= {ADDRESS_BITS{1'd0}};
   end else begin // if (reset)
-   if (flush || stall) begin
+   if (flush) begin
       exmem_ALU_result    <= {DATA_WIDTH{1'd0}};
       exmem_rd            <= 5'd0;
-      exmem_regWrite      <= 1'd0;
+      exmem_regWrite      <= 1'd1;
       exmem_memRead       <= 1'd0;
       exmem_memWrite      <= 1'd0;
       exmem_rs2_data      <= 32'd0;
@@ -387,7 +388,7 @@ always @ (posedge clock) begin : exmem
       exmem_JALR_target   <= {ADDRESS_BITS{1'd0}};
       exmem_branch_target <= {ADDRESS_BITS{1'd0}}; 
       exmem_next_PC_sel   <= 2'd0;
-      exmem_inst_PC       <= idex_inst_PC;
+      exmem_inst_PC       <= {ADDRESS_BITS{1'd0}};
       exmem_instruction   <= 32'h00000013;
    end else begin
       exmem_ALU_result    <= ALU_result;
@@ -473,7 +474,7 @@ always @ (posedge clock) begin : memwb
   if (reset) begin
     memwb_load_data   <= {DATA_WIDTH{1'd0}};
     memwb_rd          <= 5'd0;
-    memwb_regWrite    <= 1'd0;
+    memwb_regWrite    <= 1'd1;
     memwb_memRead     <= 1'd0;
     memwb_ALU_result  <= {DATA_WIDTH{1'd0}};
     memwb_inst_PC     <= 'd0;
