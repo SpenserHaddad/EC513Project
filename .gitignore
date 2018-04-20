@@ -1,6 +1,9 @@
 # Large binary files (kept as gzipped files instead)
 *cc1
 
+# Editor preferences
+*.vscode
+
 # Prerequisites
 *.d
 

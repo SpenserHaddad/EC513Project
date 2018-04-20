@@ -46,7 +46,7 @@ always @(posedge clock)
 //----------------------------------------------------
 // Drive the outputs
 //----------------------------------------------------
-assign  read_data1 = register_file[read_sel1];
-assign  read_data2 = register_file[read_sel2];
+assign  read_data1 = (wEn && write_sel == read_sel1) ? write_data : register_file[read_sel1];
+assign  read_data2 = (wEn && write_sel == read_sel2) ? write_data : register_file[read_sel2];
 
 endmodule

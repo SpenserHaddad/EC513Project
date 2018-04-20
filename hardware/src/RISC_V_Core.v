@@ -21,8 +21,8 @@
  *
  */
 
-module RISC_V_Core #(parameter CORE = 0, DATA_WIDTH = 32, INDEX_BITS = 6, 
-                     OFFSET_BITS = 3, ADDRESS_BITS = 20)(
+module RISC_V_Core #(parameter CORE = 32'd0, DATA_WIDTH = 32'd32, INDEX_BITS = 32'd6, 
+                     OFFSET_BITS = 32'd3, ADDRESS_BITS = 32'd20)(
     clock, 
     reset, 
     start,
@@ -38,24 +38,45 @@ module RISC_V_Core #(parameter CORE = 0, DATA_WIDTH = 32, INDEX_BITS = 6,
     report 
 ); 
 
+// ----------------------------------------------------------------------------
+// IO Declarations
+//
 input  clock, reset, start; 
 input  [ADDRESS_BITS - 1:0]  prog_address; 
 
 // For I/O funstions
-input  [1:0]   from_peripheral;
-input  [31:0]  from_peripheral_data; 
-input          from_peripheral_valid;
-output [1:0]   to_peripheral;
-output [31:0]  to_peripheral_data; 
-output         to_peripheral_valid;
+input       [1:0] from_peripheral;
+input      [31:0] from_peripheral_data; 
+input             from_peripheral_valid;
+output reg  [1:0] to_peripheral;
+output reg [31:0] to_peripheral_data; 
+output reg        to_peripheral_valid;
 
 input  report; // performance reporting
 
+// ----------------------------------------------------------------------------
+// Internal Signal Declarations
+//
+//////////////
+// IF Stage //
+//////////////
+//
 wire [31:0]  instruction;
 wire [ADDRESS_BITS-1: 0] inst_PC;
-wire i_valid, i_ready;
-wire d_valid, d_ready;
 
+reg   [DATA_WIDTH-1:0] ifid_instruction;
+reg   [DATA_WIDTH-1:0] idex_instruction;
+reg   [DATA_WIDTH-1:0] exmem_instruction;
+reg   [DATA_WIDTH-1:0] memwb_instruction;
+reg [ADDRESS_BITS-1:0] ifid_inst_PC;  
+reg [ADDRESS_BITS-1:0] idex_inst_PC;  
+reg [ADDRESS_BITS-1:0] exmem_inst_PC;  
+reg [ADDRESS_BITS-1:0] memwb_inst_PC;  
+
+//////////////
+// ID Stage //
+//////////////
+//
 wire [ADDRESS_BITS-1: 0] JAL_target;   
 wire [ADDRESS_BITS-1: 0] JALR_target;   
 wire [ADDRESS_BITS-1: 0] branch_target; 
@@ -73,7 +94,6 @@ wire [6:0]  funct7;
 wire [2:0]  funct3;
 
 wire memRead; 
-wire memtoReg;
 wire [2:0] ALUOp;
 wire branch_op;
 wire [1:0] next_PC_sel;
@@ -85,147 +105,420 @@ wire [DATA_WIDTH-1:0]  extend_imm;
 wire memWrite;
 wire regWrite;
 
-wire branch;
-wire [DATA_WIDTH-1:0]   ALU_result; 
-wire [ADDRESS_BITS-1:0] generated_addr = ALU_result; // the case the address is not 32-bit
+wire             [4:0] rs1;
+wire             [4:0] rs2;
 
-wire ALU_branch; 
-wire zero; // Have not done anything with this signal
+reg             [31:0] idex_rs1_data; 
+reg             [31:0] idex_rs2_data;
+reg              [4:0] idex_rd;  
+reg              [6:0] idex_funct7; 
+reg              [2:0] idex_funct3;
+reg             [31:0] idex_extend_imm;
+reg                    idex_regWrite;
+reg                    idex_memRead;
+reg                    idex_memWrite;
+reg              [2:0] idex_ALUOp;
+reg                    idex_branch_op;
+reg              [1:0] idex_operand_A_sel; 
+reg                    idex_operand_B_sel; 
+reg [ADDRESS_BITS-1:0] idex_branch_target; 
+reg              [4:0] idex_rs1;
+reg              [4:0] idex_rs2;
+reg [ADDRESS_BITS-1:0] idex_JAL_target;   
+reg              [1:0] idex_next_PC_sel;
 
+wire                   stall;
+
+//////////////
+// EX Stage //
+//////////////
+//
+reg   [DATA_WIDTH-1:0] fwdd_regRead_1; 
+reg   [DATA_WIDTH-1:0] fwdd_regRead_2; 
+
+wire                   branch;
+wire  [DATA_WIDTH-1:0] ALU_result; 
+
+reg   [DATA_WIDTH-1:0] exmem_ALU_result;
+reg              [4:0] exmem_rd;
+reg                    exmem_regWrite;
+reg                    exmem_memRead;
+reg                    exmem_memWrite;
+reg             [31:0] exmem_rs2_data;
+reg                    exmem_branch;
+reg [ADDRESS_BITS-1:0] exmem_JAL_target;   
+reg [ADDRESS_BITS-1:0] exmem_JALR_target;   
+reg [ADDRESS_BITS-1:0] exmem_branch_target; 
+reg              [1:0] exmem_next_PC_sel;
+
+wire                   flush;
+reg              [2:0] flush_d;
+  
+///////////////
+// MEM Stage //
+///////////////
+//
 wire [DATA_WIDTH-1:0]    memory_data;
-wire [ADDRESS_BITS-1: 0] memory_addr; // To use to check the address coming out the memory stage
 
-reg  [1:0]   to_peripheral;
-reg  [31:0]  to_peripheral_data; 
-reg          to_peripheral_valid;
+reg   [DATA_WIDTH-1:0] memwb_load_data;
+reg              [4:0] memwb_rd;
+reg                    memwb_regWrite;
+reg   [DATA_WIDTH-1:0] memwb_ALU_result;
+reg                    memwb_memRead;
 
+// ----------------------------------------------------------------------------
+// IF Stage
+//
 fetch_unit #(CORE, DATA_WIDTH, INDEX_BITS, OFFSET_BITS, ADDRESS_BITS) IF (
-        .clock(clock), 
-        .reset(reset), 
-        .start(start), 
+        .clock           (clock), 
+        .reset           (reset), 
+        .start           (start), 
         
-        .PC_select(next_PC_sel),
-        .program_address(prog_address), 
-        .JAL_target(JAL_target),
-        .JALR_target(JALR_target),
-        .branch(branch), 
-        .branch_target(branch_target), 
+        .PC_select       (exmem_next_PC_sel),
+        .program_address (prog_address), 
+        .JAL_target      (exmem_JAL_target),
+        .JALR_target     (exmem_JALR_target),
+        .branch          (exmem_branch), 
+        .branch_target   (exmem_branch_target), 
         
-        .instruction(instruction), 
-        .inst_PC(inst_PC),
-        .valid(i_valid),
-        .ready(i_ready),
+        .stall           (stall),
+        .instruction     (instruction), 
+        .inst_PC         (inst_PC),
+        .valid           (),
+        .ready           (),
         
-        .report(report)
+        .report          (report)
 ); 
       
+
+always @ (posedge clock) begin : ifid
+  if (reset) begin
+    ifid_instruction <= 32'h00000013;
+    ifid_inst_PC     <= {ADDRESS_BITS{1'd0}};
+  end else begin
+    if (flush) begin
+      ifid_instruction <= 32'h00000013;
+      ifid_inst_PC     <= {ADDRESS_BITS{1'd0}};
+    end else begin
+      if (!stall) begin
+        ifid_instruction <= instruction;
+        ifid_inst_PC     <= inst_PC;
+      end
+    end
+  end
+end
+
+// ----------------------------------------------------------------------------
+// ID Stage
+//
 decode_unit #(CORE, ADDRESS_BITS) ID (
-        .clock(clock), 
-        .reset(reset),  
+        .clock         (clock), 
+        .reset         (reset),  
         
-        .instruction(instruction), 
-        .PC(inst_PC),
-        .extend_sel(extend_sel),
-        .write(write), 
-        .write_reg(write_reg), 
-        .write_data(write_data), 
+        .instruction   (ifid_instruction), 
+        .PC            (ifid_inst_PC),
+        .extend_sel    (extend_sel),
+        .write         (write), 
+        .write_reg     (write_reg), 
+        .write_data    (write_data), 
       
-        .opcode(opcode), 
-        .funct3(funct3), 
-        .funct7(funct7),
-        .rs1_data(rs1_data), 
-        .rs2_data(rs2_data), 
-        .rd(rd), 
+        .opcode        (opcode), 
+        .funct3        (funct3), 
+        .funct7        (funct7),
+        .rs1_data      (rs1_data), 
+        .rs2_data      (rs2_data), 
+        .rd            (rd), 
  
-        .extend_imm(extend_imm),
-        .branch_target(branch_target), 
-        .JAL_target(JAL_target),
+        .extend_imm    (extend_imm),
+        .branch_target (branch_target), 
+        .JAL_target    (JAL_target),
         
-        .report(report)
+        .report        (report)
 ); 
 
 control_unit #(CORE) CU (
-        .clock(clock), 
-        .reset(reset),   
+        .clock         (clock), 
+        .reset         (reset),   
         
-        .opcode(opcode),
-        .branch_op(branch_op), 
-        .memRead(memRead), 
-        .memtoReg(memtoReg), 
-        .ALUOp(ALUOp), 
-        .memWrite(memWrite), 
-        .next_PC_sel(next_PC_sel), 
-        .operand_A_sel(operand_A_sel), 
-        .operand_B_sel(operand_B_sel),
-        .extend_sel(extend_sel),        
-        .regWrite(regWrite), 
+        .opcode        (opcode),
+        .branch_op     (branch_op), 
+        .memRead       (memRead), 
+        .memtoReg      (), 
+        .ALUOp         (ALUOp), 
+        .memWrite      (memWrite), 
+        .next_PC_sel   (next_PC_sel), 
+        .operand_A_sel (operand_A_sel), 
+        .operand_B_sel (operand_B_sel),
+        .extend_sel    (extend_sel),        
+        .regWrite      (regWrite), 
         
-        .report(report)
+        .report        (report)
 );
 
+//////////////////////
+// Hazard Detection //
+//////////////////////
+//
+// Stall:
+assign rs1 = ifid_instruction[19:15];
+assign rs2 = ifid_instruction[24:20];
+
+assign stall = (((rs1 == idex_rd) & idex_memRead & (idex_rd != 5'd0)) |
+                ((rs2 == idex_rd) & idex_memRead & (idex_rd != 5'd0))) & ~flush;
+
+always @ (posedge clock) begin : idex
+  if (reset) begin
+    idex_rs1_data      <= 32'd0; 
+    idex_rs2_data      <= 32'd0;
+    idex_rd            <= 5'd0;  
+    idex_funct7        <= 7'd0; 
+    idex_funct3        <= 3'd0;
+    idex_extend_imm    <= 32'd0;
+    idex_memRead       <= 1'd0;
+    idex_memWrite      <= 1'd0;
+    idex_ALUOp         <= 3'd1;
+    idex_branch_op     <= 1'd0;
+    idex_inst_PC       <= {ADDRESS_BITS{1'd0}};
+    idex_operand_A_sel <= 2'd0; 
+    idex_operand_B_sel <= 1'd1;
+    idex_branch_target <= {ADDRESS_BITS{1'd0}};
+    idex_regWrite      <= 1'd1;
+    idex_rs1           <= 5'd0;
+    idex_rs2           <= 5'd0;
+    idex_JAL_target    <= {ADDRESS_BITS{1'd0}};
+    idex_next_PC_sel   <= 2'd0;
+    idex_instruction <= 32'h00000013;
+  end else begin
+    if (flush || stall ) begin
+      idex_inst_PC       <= {ADDRESS_BITS{1'd0}};
+      idex_rs1_data      <= 32'd0; 
+      idex_rs2_data      <= 32'd0;
+      idex_rd            <= 5'd0;  
+      idex_funct7        <= 7'd0; 
+      idex_funct3        <= 3'd0;
+      idex_extend_imm    <= 32'd0;
+      idex_memRead       <= 1'd0;
+      idex_memWrite      <= 1'd0;
+      idex_ALUOp         <= 3'd1;
+      idex_branch_op     <= 1'd0;
+      idex_operand_A_sel <= 2'd0; 
+      idex_operand_B_sel <= 1'd1;
+      idex_branch_target <= {ADDRESS_BITS{1'd0}};
+      idex_regWrite      <= 1'd1;
+      idex_rs1           <= 5'd0;
+      idex_rs2           <= 5'd0;
+      idex_JAL_target    <= {ADDRESS_BITS{1'd0}};
+      idex_next_PC_sel   <= 2'd0;
+      idex_instruction <= 32'h00000013;
+    end else begin
+      idex_rs1_data      <= rs1_data; 
+      idex_rs2_data      <= rs2_data;
+      idex_rd            <= rd;  
+      idex_funct7        <= funct7; 
+      idex_funct3        <= funct3;
+      idex_extend_imm    <= extend_imm;
+      idex_memRead       <= memRead;
+      idex_memWrite      <= memWrite;
+      idex_ALUOp         <= ALUOp;
+      idex_branch_op     <= branch_op;
+      idex_operand_A_sel <= operand_A_sel; 
+      idex_operand_B_sel <= operand_B_sel;
+      idex_branch_target <= branch_target;
+      idex_regWrite      <= regWrite;
+      idex_rs1           <= rs1;
+      idex_rs2           <= rs2;
+      idex_JAL_target    <= JAL_target;
+      idex_next_PC_sel   <= next_PC_sel;
+      idex_inst_PC       <= ifid_inst_PC;
+      idex_instruction   <= ifid_instruction;
+    end
+  end
+end
+
+// ----------------------------------------------------------------------------
+// EX Stage
+//
 execution_unit #(CORE, DATA_WIDTH, ADDRESS_BITS) EU (
-        .clock(clock), 
-        .reset(reset), 
+        .clock         (clock), 
+        .reset         (reset), 
         
-        .ALU_Operation(ALUOp), 
-        .funct3(funct3), 
-        .funct7(funct7),
-        .branch_op(branch_op),
-        .PC(inst_PC), 
-        .ALU_ASrc(operand_A_sel),
-        .ALU_BSrc(operand_B_sel),
-        .regRead_1(rs1_data), 
-        .regRead_2(rs2_data), 
-        .extend(extend_imm), 
-        .ALU_result(ALU_result), 
-        .zero(zero), 
-        .branch(branch),
-        .JALR_target(JALR_target),
+        .ALU_Operation (idex_ALUOp), 
+        .funct3        (idex_funct3), 
+        .funct7        (idex_funct7),
+        .branch_op     (idex_branch_op),
+        .PC            (idex_inst_PC), 
+        .ALU_ASrc      (idex_operand_A_sel),
+        .ALU_BSrc      (idex_operand_B_sel),
+        .regRead_1     (fwdd_regRead_1), 
+        .regRead_2     (fwdd_regRead_2), 
+        .extend        (idex_extend_imm), 
+        .ALU_result    (ALU_result), 
+        .zero          (), 
+        .branch        (branch),
+        .JALR_target   (JALR_target),
         
-        .report(report)
+        .report        (report)
 );
 
+always @ (posedge clock) begin : exmem
+  if (reset) begin
+    exmem_ALU_result    <= {DATA_WIDTH{1'd0}};
+    exmem_rd            <= 5'd0;
+    exmem_regWrite      <= 1'd1;
+    exmem_memRead       <= 1'd0;
+    exmem_memWrite      <= 1'd0;
+    exmem_rs2_data      <= 32'd0;
+    exmem_branch        <= 1'd0;
+    exmem_JAL_target    <= {ADDRESS_BITS{1'd0}};
+    exmem_JALR_target   <= {ADDRESS_BITS{1'd0}};
+    exmem_branch_target <= {ADDRESS_BITS{1'd0}}; 
+    exmem_next_PC_sel   <= 2'd0;
+    exmem_instruction   <= 32'h00000013;
+    exmem_inst_PC       <= {ADDRESS_BITS{1'd0}};
+  end else begin // if (reset)
+   if (flush) begin
+      exmem_ALU_result    <= {DATA_WIDTH{1'd0}};
+      exmem_rd            <= 5'd0;
+      exmem_regWrite      <= 1'd1;
+      exmem_memRead       <= 1'd0;
+      exmem_memWrite      <= 1'd0;
+      exmem_rs2_data      <= 32'd0;
+      exmem_branch        <= 1'd0;
+      exmem_JAL_target    <= {ADDRESS_BITS{1'd0}};
+      exmem_JALR_target   <= {ADDRESS_BITS{1'd0}};
+      exmem_branch_target <= {ADDRESS_BITS{1'd0}}; 
+      exmem_next_PC_sel   <= 2'd0;
+      exmem_inst_PC       <= {ADDRESS_BITS{1'd0}};
+      exmem_instruction   <= 32'h00000013;
+   end else begin
+      exmem_ALU_result    <= ALU_result;
+      exmem_rd            <= idex_rd;
+      exmem_regWrite      <= idex_regWrite;
+      exmem_memRead       <= idex_memRead;
+      exmem_memWrite      <= idex_memWrite;
+      exmem_rs2_data      <= idex_rs2_data;
+      exmem_branch        <= branch;
+      exmem_next_PC_sel   <= idex_next_PC_sel;
+      exmem_JAL_target    <= idex_JAL_target;
+      exmem_JALR_target   <= JALR_target;
+      exmem_branch_target <= idex_branch_target; 
+      exmem_inst_PC       <= idex_inst_PC;
+      exmem_instruction   <= idex_instruction;
+    end // else: !if(flush)
+  end
+end
+
+assign flush = (exmem_next_PC_sel[1] || ((exmem_next_PC_sel == 2'd1) & exmem_branch));
+
+always @(posedge clock) begin : flush_dly
+  if (reset) begin
+    flush_d[2:0] <= 3'd0;
+  end else begin
+    flush_d[2:0] <= {flush_d[1:0], flush};
+  end
+end
+  
+/////////////////////
+// Forwarding Unit //
+/////////////////////
+//
+always @* begin : fwdA
+  if (exmem_regWrite && (exmem_rd == idex_rs1) && (exmem_rd != 5'd0)) begin
+    fwdd_regRead_1 = exmem_ALU_result;
+  end else begin
+    if (memwb_regWrite && (memwb_rd != 5'd0) && 
+        !(exmem_regWrite && (exmem_rd != 5'd0) && (exmem_rd != idex_rs1)) &&
+        (memwb_rd == idex_rs1)) begin
+      fwdd_regRead_1 = write_data;
+    end else begin
+      fwdd_regRead_1 = idex_rs1_data;
+    end
+  end
+end
+
+
+always @* begin : fwdB
+  if (exmem_regWrite && (exmem_rd == idex_rs2) && (exmem_rd != 5'd0)) begin
+    fwdd_regRead_2 = exmem_ALU_result;
+  end else begin
+    if (memwb_regWrite && (memwb_rd != 5'd0) && 
+        !(exmem_regWrite && (exmem_rd != 5'd0) && (exmem_rd != idex_rs2)) &&
+        (memwb_rd == idex_rs2)) begin
+      fwdd_regRead_2 = write_data;
+    end else begin
+      fwdd_regRead_2 = idex_rs2_data;
+    end
+  end
+end
+
+// ----------------------------------------------------------------------------
+// MEM Stage
+//
 memory_unit #(CORE, DATA_WIDTH, INDEX_BITS, OFFSET_BITS, ADDRESS_BITS) MU (
-        .clock(clock), 
-        .reset(reset), 
+        .clock      (clock), 
+        .reset      (reset), 
         
-        .load(memRead), 
-        .store(memWrite),
-        .address(generated_addr), 
-        .store_data(rs2_data),
-        .data_addr(memory_addr), 
-        .load_data(memory_data),
-        .valid(d_valid),
-        .ready(d_ready),
+        .load       (exmem_memRead), 
+        .store      (exmem_memWrite),
+        .address    (exmem_ALU_result[ADDRESS_BITS-1:0]), 
+        .store_data (exmem_rs2_data),
+        .data_addr  (), 
+        .load_data  (memory_data),
+        .valid      (),
+        .ready      (),
         
-        .report(report)
+        .report     (report)
 ); 
 
+always @ (posedge clock) begin : memwb
+  if (reset) begin
+    memwb_load_data   <= {DATA_WIDTH{1'd0}};
+    memwb_rd          <= 5'd0;
+    memwb_regWrite    <= 1'd1;
+    memwb_memRead     <= 1'd0;
+    memwb_ALU_result  <= {DATA_WIDTH{1'd0}};
+    memwb_inst_PC     <= 'd0;
+    memwb_instruction <= 32'h00000013;
+  end else begin
+    memwb_load_data   <= memory_data;
+    memwb_rd          <= exmem_rd;
+    memwb_regWrite    <= exmem_regWrite;
+    memwb_memRead     <= exmem_memRead;
+    memwb_ALU_result  <= exmem_ALU_result;   
+    memwb_inst_PC     <= exmem_inst_PC;
+    memwb_instruction <= exmem_instruction;
+  end
+end
+
+// ----------------------------------------------------------------------------
+// WB Stage
+//
 writeback_unit #(CORE, DATA_WIDTH) WB (
-        .clock(clock), 
-        .reset(reset),   
+        .clock       (clock), 
+        .reset       (reset),   
         
-        .opWrite(regWrite),
-        .opSel(memRead), 
-        .opReg(rd), 
-        .ALU_Result(ALU_result), 
-        .memory_data(memory_data), 
-        .write(write), 
-        .write_reg(write_reg), 
-        .write_data(write_data), 
+        .opWrite     (memwb_regWrite),
+        .opSel       (memwb_memRead),
+        .opReg       (memwb_rd), 
+        .ALU_Result  (memwb_ALU_result), 
+        .memory_data (memwb_load_data), 
+        .write       (write), 
+        .write_reg   (write_reg), 
+        .write_data  (write_data), 
         
         .report(report)
 ); 
 
-//Registers s1-s11 [$9,$x18-$x27] are saved across calls ... Using s1-s9 [$9,x18-x25] for final results
-always @ (posedge clock) begin        
-         if (write && (((write_reg >= 18) && (write_reg <= 25))|| (write_reg == 9)))  begin
-              to_peripheral       <= 0;
+// Registers s1-s11 [$9,$x18-$x27] are saved across calls ... Using s1-s9 [$9,x18-x25] for final results
+always @ (posedge clock) begin : results        
+         if (write && (((write_reg >= 5'd18) && (write_reg <= 5'd25))|| (write_reg == 5'd9)))  begin
+              to_peripheral       <= 2'd0;
               to_peripheral_data  <= write_data; 
-              to_peripheral_valid <= 1;
+              to_peripheral_valid <= 1'd1;
               $display (" Core [%d] Register [%d] Value = %d", CORE, write_reg, write_data);
+         end else begin
+           to_peripheral_valid <= 1'd0;
          end
-         else to_peripheral_valid <= 0;  
 end
     
 endmodule
