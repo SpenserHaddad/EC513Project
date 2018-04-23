@@ -396,7 +396,7 @@ always @ (posedge clock) begin : exmem
       exmem_regWrite      <= idex_regWrite;
       exmem_memRead       <= idex_memRead;
       exmem_memWrite      <= idex_memWrite;
-      exmem_rs2_data      <= idex_rs2_data;
+      exmem_rs2_data      <= fwdd_regRead_2;
       exmem_branch        <= branch;
       exmem_next_PC_sel   <= idex_next_PC_sel;
       exmem_JAL_target    <= idex_JAL_target;
@@ -427,7 +427,8 @@ always @* begin : fwdA
     fwdd_regRead_1 = exmem_ALU_result;
   end else begin
     if (memwb_regWrite && (memwb_rd != 5'd0) && 
-        !(exmem_regWrite && (exmem_rd != 5'd0) && (exmem_rd != idex_rs1)) &&
+//        !(exmem_regWrite && (exmem_rd != 5'd0) && (exmem_rd != idex_rs1) &&
+//          (exmem_rd != idex_rs1)) &&
         (memwb_rd == idex_rs1)) begin
       fwdd_regRead_1 = write_data;
     end else begin
@@ -442,7 +443,8 @@ always @* begin : fwdB
     fwdd_regRead_2 = exmem_ALU_result;
   end else begin
     if (memwb_regWrite && (memwb_rd != 5'd0) && 
-        !(exmem_regWrite && (exmem_rd != 5'd0) && (exmem_rd != idex_rs2)) &&
+//        !(exmem_regWrite && (exmem_rd != 5'd0) && (exmem_rd != idex_rs2) &&
+//          (exmem_rd != idex_rs2)) &&
         (memwb_rd == idex_rs2)) begin
       fwdd_regRead_2 = write_data;
     end else begin
