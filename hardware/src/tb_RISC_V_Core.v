@@ -21,13 +21,29 @@
  *
  */
 
- module tb_RISC_V_Core(); 
+module tb_RISC_V_Core(); 
  
-reg clock, reset, start; 
-reg [19:0] prog_address; 
-reg report; // performance reporting
+localparam ADDRESS_BITS = 32'd20;
+localparam DATA_WIDTH   = 32'd32;
+
+reg          clock, reset, start; 
+reg   [19:0] prog_address; 
+reg          report; // performance reporting
 reg [80*8:1] rom_filename;
 reg   [31:0] clock_cycles;
+
+wire   [DATA_WIDTH-1:0] instruction;
+wire   [DATA_WIDTH-1:0] ifid_instruction;
+reg    [DATA_WIDTH-1:0] idex_instruction;
+reg    [DATA_WIDTH-1:0] exmem_instruction;
+reg    [DATA_WIDTH-1:0] memwb_instruction;
+
+wire [ADDRESS_BITS-1:0] inst_PC;  
+wire [ADDRESS_BITS-1:0] ifid_inst_PC;  
+wire [ADDRESS_BITS-1:0] idex_inst_PC;  
+reg  [ADDRESS_BITS-1:0] exmem_inst_PC;  
+reg  [ADDRESS_BITS-1:0] memwb_inst_PC;  
+
 
 // module RISC_V_Core #(parameter CORE = 0, DATA_WIDTH = 32, INDEX_BITS = 6, OFFSET_BITS = 3, ADDRESS_BITS = 20)
 RISC_V_Core CORE (
@@ -71,10 +87,60 @@ always @(posedge clock) begin
   end
 end
 
-integer ii;
+// ----------------------------------------------------------------------------
+// PC and Instruction Pipelining for debug:
+//
+assign instruction      = CORE.instruction;
+assign inst_PC          = CORE.inst_PC;
+
+assign ifid_instruction = CORE.ifid_instruction;
+assign ifid_inst_PC     = CORE.ifid_inst_PC;
+
+always @ (posedge clock) begin : idex
+  if (reset) begin
+    idex_instruction <= 32'h00000013;
+  end else begin
+    if (CORE.flush || CORE.stall ) begin
+      idex_instruction <= 32'h00000013;
+    end else begin
+      idex_instruction <= ifid_instruction;
+    end
+  end
+end
+
+assign idex_inst_PC = CORE.idex_inst_PC;
+
+always @ (posedge clock) begin : exmem
+  if (reset) begin
+    exmem_instruction <= 32'h00000013;
+    exmem_inst_PC     <= {ADDRESS_BITS{1'd0}};
+  end else begin // if (reset)
+   if (CORE.flush) begin
+     exmem_inst_PC     <= {ADDRESS_BITS{1'd0}};
+     exmem_instruction <= 32'h00000013;
+   end else begin
+      exmem_inst_PC       <= idex_inst_PC;
+      exmem_instruction   <= idex_instruction;
+    end // else: !if(flush)
+  end
+end
+
+always @ (posedge clock) begin : memwb
+  if (reset) begin
+    memwb_inst_PC     <= {ADDRESS_BITS{1'd0}};
+    memwb_instruction <= 32'h00000013;
+  end else begin
+    memwb_inst_PC     <= exmem_inst_PC;
+    memwb_instruction <= exmem_instruction;
+  end
+end
+ 
+// ----------------------------------------------------------------------------
+// End-of-Simulation Snooping:
+//
 always @(negedge clock) begin
   //$display("PC is: %0h", CORE.inst_PC);
-  if (CORE.inst_PC == 32'h000000b0) begin
+  if (memwb_inst_PC == 32'h000000b0) begin
     $display("Test Completed after %0d clock cycles", clock_cycles);
     $finish;
   end
