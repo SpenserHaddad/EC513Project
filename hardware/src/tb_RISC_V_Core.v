@@ -31,6 +31,8 @@ reg   [19:0] prog_address;
 reg          report; // performance reporting
 reg [80*8:1] rom_filename;
 reg   [31:0] clock_cycles;
+reg   [31:0] flushes;
+reg   [31:0] stalls;
 
 wire   [DATA_WIDTH-1:0] instruction;
 wire   [DATA_WIDTH-1:0] ifid_instruction;
@@ -79,11 +81,34 @@ initial begin
   repeat (1) @ (posedge clock); 
 end
 
+// ----------------------------------------------------------------------------
+// Counter's for performance:
+//
 always @(posedge clock) begin
   if (reset) begin
     clock_cycles <= 32'd0;
   end else begin
     clock_cycles <= clock_cycles+1;
+  end
+end
+
+always @(posedge clock) begin
+  if (reset) begin
+    stalls <= 32'd0;
+  end else begin
+    if (CORE.stall) begin
+    stalls <= stalls+1;
+    end
+  end
+end
+
+always @(posedge clock) begin
+  if (reset) begin
+    flushes <= 32'd0;
+  end else begin
+    if (CORE.flush) begin
+      flushes <= flushes+1;
+    end
   end
 end
 
@@ -142,6 +167,8 @@ always @(negedge clock) begin
   //$display("PC is: %0h", CORE.inst_PC);
   if (memwb_inst_PC == 32'h000000b0) begin
     $display("Test Completed after %0d clock cycles", clock_cycles);
+    $display("%0d stalls", stalls);
+    $display("%0d flushes", flushes);
     $finish;
   end
 end
