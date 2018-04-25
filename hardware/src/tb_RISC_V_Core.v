@@ -33,6 +33,8 @@ reg [80*8:1] rom_filename;
 reg   [31:0] clock_cycles;
 reg   [31:0] flushes;
 reg   [31:0] stalls;
+reg   [31:0] branch_or_jmps;
+  
 
 wire   [DATA_WIDTH-1:0] instruction;
 wire   [DATA_WIDTH-1:0] ifid_instruction;
@@ -112,6 +114,16 @@ always @(posedge clock) begin
   end
 end
 
+always @(posedge clock) begin
+  if (reset) begin
+    branch_or_jmps <= 32'd0;
+  end else begin
+    if (CORE.exmem_next_PC_sel != 'd0) begin
+      branch_or_jmps <= branch_or_jmps+1;
+    end
+  end
+end
+
 // ----------------------------------------------------------------------------
 // PC and Instruction Pipelining for debug:
 //
@@ -168,6 +180,7 @@ always @(negedge clock) begin
   if (memwb_inst_PC == 32'h000000b0) begin
     $display("Test Completed after %0d clock cycles", clock_cycles);
     $display("%0d stalls", stalls);
+    $display("%0d Branches or Jumps", branch_or_jmps);
     $display("%0d flushes", flushes);
     $finish;
   end
