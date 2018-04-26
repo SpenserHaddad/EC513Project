@@ -67,6 +67,13 @@ wire [ADDRESS_BITS-1: 0] inst_PC;
 reg   [DATA_WIDTH-1:0] ifid_instruction;
 reg [ADDRESS_BITS-1:0] ifid_inst_PC;  
 
+
+// BTB Stage
+wire	last_prediction_correct;
+reg predict_branch;
+reg[ADDRESS_BITS-1:0] predicted_branch_target;
+reg ifid_predict_branch;
+
 //////////////
 // ID Stage //
 //////////////
@@ -122,6 +129,7 @@ reg              [4:0] idex_rs2;
 reg [ADDRESS_BITS-1:0] idex_JAL_target;   
 reg              [1:0] idex_next_PC_sel;
 
+reg					   idex_predict_branch;	
 wire                   stall;
 
 //////////////
@@ -145,6 +153,8 @@ reg [ADDRESS_BITS-1:0] exmem_JAL_target;
 reg [ADDRESS_BITS-1:0] exmem_JALR_target;   
 reg [ADDRESS_BITS-1:0] exmem_branch_target; 
 reg              [1:0] exmem_next_PC_sel;
+reg					   exmem_branch_op;
+reg					   exmem_predict_branch;
 
 wire                   flush;
   
@@ -168,12 +178,12 @@ fetch_unit #(CORE, DATA_WIDTH, INDEX_BITS, OFFSET_BITS, ADDRESS_BITS) IF (
         .reset           (reset), 
         .start           (start), 
         
-        .PC_select       (exmem_next_PC_sel),
+        .PC_select       (PC_select),//(exmem_next_PC_sel),
         .program_address (prog_address), 
         .JAL_target      (exmem_JAL_target),
         .JALR_target     (exmem_JALR_target),
-        .branch          (exmem_branch), 
-        .branch_target   (exmem_branch_target), 
+        .branch          (predict_branch),//(exmem_branch), 
+        .branch_target   (pred_branch_target),//(exmem_branch_target), 
         
         .stall           (stall),
         .instruction     (instruction), 
@@ -184,6 +194,19 @@ fetch_unit #(CORE, DATA_WIDTH, INDEX_BITS, OFFSET_BITS, ADDRESS_BITS) IF (
         .report          (report)
 ); 
       
+assign PC_select = !last_prediction_correct? exmem_next_PC_sel:
+				   predict_branch? 2'b01 : exmem_next_PC_sel;
+
+Branch_predictor BTB (
+	.clock(clock),
+	.rst(reset),
+	.branch_op(branch_op),
+	.taken(exmem_branch),
+	
+	.Predict(predict_branch)
+);
+
+
 always @ (posedge clock) begin : ifid
   if (reset) begin
     ifid_instruction <= 32'h00000013;
@@ -196,6 +219,7 @@ always @ (posedge clock) begin : ifid
       if (!stall) begin
         ifid_instruction <= instruction;
         ifid_inst_PC     <= inst_PC;
+		ifid_predict_branch <= predict_branch;
       end
     end
   end
@@ -280,6 +304,7 @@ always @ (posedge clock) begin : idex
     idex_rs2           <= 5'd0;
     idex_JAL_target    <= {ADDRESS_BITS{1'd0}};
     idex_next_PC_sel   <= 2'd0;
+	idex_predict_branch   <= 1'd0;	
   end else begin
     if (flush || stall ) begin
       idex_rs1_data      <= 32'd0; 
@@ -301,12 +326,14 @@ always @ (posedge clock) begin : idex
       idex_rs2           <= 5'd0;
       idex_JAL_target    <= {ADDRESS_BITS{1'd0}};
       idex_next_PC_sel   <= 2'd0;
+	  idex_predict_branch 	 <= 1'd0;
     end else begin
       idex_rs1_data      <= rs1_data; 
       idex_rs2_data      <= rs2_data;
       idex_rd            <= rd;  
       idex_funct7        <= funct7; 
       idex_funct3        <= funct3;
+
       idex_extend_imm    <= extend_imm;
       idex_memRead       <= memRead;
       idex_memWrite      <= memWrite;
@@ -321,6 +348,7 @@ always @ (posedge clock) begin : idex
       idex_rs2           <= rs2;
       idex_JAL_target    <= JAL_target;
       idex_next_PC_sel   <= next_PC_sel;
+	  idex_predict_branch	 <= ifid_predict_branch;	
     end
   end
 end
@@ -363,6 +391,8 @@ always @ (posedge clock) begin : exmem
     exmem_JALR_target   <= {ADDRESS_BITS{1'd0}};
     exmem_branch_target <= {ADDRESS_BITS{1'd0}}; 
     exmem_next_PC_sel   <= 2'd0;
+	exmem_branch_op 	<= 1'd0;
+	exmem_predict_branch   <= 1'd0;
   end else begin // if (reset)
    if (flush) begin
       exmem_ALU_result    <= {DATA_WIDTH{1'd0}};
@@ -376,6 +406,8 @@ always @ (posedge clock) begin : exmem
       exmem_JALR_target   <= {ADDRESS_BITS{1'd0}};
       exmem_branch_target <= {ADDRESS_BITS{1'd0}}; 
       exmem_next_PC_sel   <= 2'd0;
+	  exmem_branch_op     <= 1'd0;
+      exmem_predict_branch   <= 1'd0;
    end else begin
       exmem_ALU_result    <= ALU_result;
       exmem_rd            <= idex_rd;
@@ -388,12 +420,18 @@ always @ (posedge clock) begin : exmem
       exmem_JAL_target    <= idex_JAL_target;
       exmem_JALR_target   <= JALR_target;
       exmem_branch_target <= idex_branch_target; 
+	  exmem_branch_op     <= idex_branch_op;
+	  exmem_predict_branch   <= idex_predict_branch;
     end // else: !if(flush)
   end
 end
 
-assign flush = (exmem_next_PC_sel[1] || ((exmem_next_PC_sel == 2'd1) & exmem_branch));
-  
+assign last_prediction_correct = exmem_branch_op && (exmem_branch == exmem_predict_branch);
+
+assign flush = (exmem_next_PC_sel[1] ||
+			   ((exmem_next_PC_sel == 2'd1) & exmem_branch) ||
+ 			   (!last_prediction_correct)); 
+
 /////////////////////
 // Forwarding Unit //
 /////////////////////
