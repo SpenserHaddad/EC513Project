@@ -3,6 +3,7 @@
 
 # Editor preferences
 *.vscode
+*.swp
 
 # Prerequisites
 *.d
