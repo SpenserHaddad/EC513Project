@@ -66,11 +66,11 @@ wire [ADDRESS_BITS-1: 0] inst_PC;
 
 reg   [DATA_WIDTH-1:0] ifid_instruction;
 reg [ADDRESS_BITS-1:0] ifid_inst_PC;  
-
+reg 			 [1:0] PC_select;
 
 // BTB Stage
 wire	last_prediction_correct;
-reg predict_branch;
+wire  predict_branch;
 reg[ADDRESS_BITS-1:0] predicted_branch_target;
 reg ifid_predict_branch;
 
@@ -182,8 +182,8 @@ fetch_unit #(CORE, DATA_WIDTH, INDEX_BITS, OFFSET_BITS, ADDRESS_BITS) IF (
         .program_address (prog_address), 
         .JAL_target      (exmem_JAL_target),
         .JALR_target     (exmem_JALR_target),
-        .branch          (predict_branch),//(exmem_branch), 
-        .branch_target   (pred_branch_target),//(exmem_branch_target), 
+        .branch          (exmem_branch), 
+        .branch_target   (exmem_branch_target), 
         
         .stall           (stall),
         .instruction     (instruction), 
@@ -194,8 +194,6 @@ fetch_unit #(CORE, DATA_WIDTH, INDEX_BITS, OFFSET_BITS, ADDRESS_BITS) IF (
         .report          (report)
 ); 
       
-assign PC_select = !last_prediction_correct? exmem_next_PC_sel:
-				   predict_branch? 2'b01 : exmem_next_PC_sel;
 
 Branch_predictor BTB (
 	.clock(clock),
@@ -220,6 +218,8 @@ always @ (posedge clock) begin : ifid
         ifid_instruction <= instruction;
         ifid_inst_PC     <= inst_PC;
 		ifid_predict_branch <= predict_branch;
+		PC_select <= !last_prediction_correct? exmem_next_PC_sel:
+		    	     predict_branch? 2'b01 : exmem_next_PC_sel;
       end
     end
   end
