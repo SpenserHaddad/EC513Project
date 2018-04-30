@@ -31,6 +31,7 @@ module execution_unit #(parameter CORE = 0, DATA_WIDTH = 32, ADDRESS_BITS = 20)(
         extend,
         ALU_result, zero, branch, 
         JALR_target,    
+        ALU_branch,
         
         report
 );
@@ -50,6 +51,7 @@ input [DATA_WIDTH-1:0]  extend;
 output zero, branch; 
 output [DATA_WIDTH-1:0] ALU_result;
 output [ADDRESS_BITS-1:0] JALR_target;
+output                     ALU_branch;
 
 input report; 
  
@@ -81,7 +83,6 @@ wire [DATA_WIDTH-1:0]  operand_A  =  (ALU_ASrc == 2'b01)? PC :
                                      (ALU_ASrc == 2'b10)? (PC + 4) : regRead_1;
 wire [DATA_WIDTH-1:0]  operand_B  =   ALU_BSrc? extend : regRead_2;
 
-wire ALU_branch;
 assign branch  = (ALU_branch & branch_op)? 1 : 0; 
 
 ALU #(DATA_WIDTH) EU (

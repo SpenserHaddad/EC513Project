@@ -32,8 +32,14 @@ module fetch_unit #(parameter CORE = 0, DATA_WIDTH = 32, INDEX_BITS = 6,
         branch_target, 
         
         stall,
+        flush,
+        predict_taken,
+        predicted_address,
+        exmem_predict_taken,
+
         instruction, 
         inst_PC,
+        exmem_inst_PC,
         valid, 
         ready, 
         report
@@ -50,9 +56,15 @@ input [ADDRESS_BITS-1:0] branch_target;
 
 input report;
 
-input stall;
+input                    stall;
+input                    flush;
+input                    predict_taken;
+input                    exmem_predict_taken;
+input [ADDRESS_BITS-1:0] predicted_address;
+
 output [DATA_WIDTH-1:0]   instruction;
 output [ADDRESS_BITS-1:0] inst_PC;  
+input  [ADDRESS_BITS-1:0] exmem_inst_PC;  
 output valid; 
 output ready; 
 
@@ -98,14 +110,40 @@ always @ (posedge clock) begin
         else begin 
           if (!stall) begin
             fetch        <= 1;
-            PC_reg       <= (PC_select == 2'b10)?  JAL_target: 
-                            (PC_select == 2'b11)?  JALR_target: 
-                            ((PC_select == 2'b01)& branch)?  branch_target : PC_plus4;  
-            old_PC       <= PC_reg; 
-          end
-        end
-      end
-end
+            old_PC       <= PC_reg;
+            if (predict_taken & !flush) begin
+              PC_reg <= predicted_address;
+            end else begin
+              if (PC_select == 2'b10) begin
+                if (exmem_predict_taken) begin
+                  PC_reg <= PC_plus4;
+                end else begin
+                  PC_reg <= JAL_target;
+                end
+              end else begin
+                if (PC_select == 2'b11) begin
+                  PC_reg <= JALR_target;
+                end else begin
+                  if (PC_select == 2'b01) begin
+                    if (branch & !exmem_predict_taken) begin
+                      PC_reg <= branch_target;
+                    end else begin
+                      if (!branch & exmem_predict_taken) begin
+                        PC_reg <= exmem_inst_PC+4;
+                      end else begin
+                        PC_reg <= PC_plus4;
+                      end
+                    end
+                  end else begin
+                    PC_reg <= PC_plus4;
+                  end // else: !if(PC_select == 2'b01)
+                end // else: !if(PC_select == 2'b11)
+              end // else: !if(PC_select == 2'b10)
+            end // else: !if(predict_taken)
+          end // if (!stall)
+        end // else: !if(start)
+      end // else: !if(reset)
+end // always @ (posedge clock)
 
 reg [31: 0] cycles; 
 always @ (posedge clock) begin 
