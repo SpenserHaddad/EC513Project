@@ -21,4 +21,6 @@ endif
 /ad/eng/opt/mentor/modelsim/modeltech/bin/vlog -reportprogress 300 -work work ../hardware/src/tb_RISC_V_Core.v
 /ad/eng/opt/mentor/modelsim/modeltech/bin/vlog -reportprogress 300 -work work ../hardware/src/writeback.v
 /ad/eng/opt/mentor/modelsim/modeltech/bin/vlog -reportprogress 300 -work work ../hardware/src/fetch.v
+/ad/eng/opt/mentor/modelsim/modeltech/bin/vlog -reportprogress 300 -work work ../hardware/src/branch_predictor.v
+/ad/eng/opt/mentor/modelsim/modeltech/bin/vlog -reportprogress 300 -work work ../hardware/src/two_bit_sat_cntr.v
 /ad/eng/opt/mentor/modelsim/modeltech/bin/vsim -voptargs=+acc work.tb_RISC_V_Core ${vsimargs} -do ./run.tcl
